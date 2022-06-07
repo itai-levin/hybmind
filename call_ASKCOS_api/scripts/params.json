@@ -1,0 +1,1 @@
+{"expansion_time": 180, "filter_threshold": 0.0, "max_cum_prob": 0.99999, "return_first": false, "max_depth": 10, "template_count": 1000, "max_branching": 25, "max_ppg": 100, "max_trees": 1000, "return_graph" : true}
