@@ -1,7 +1,7 @@
 from run_tree_builder_api2 import *
 params = json.load(open('params.json','r'))
 print ('PARAMS:\n', params)
-targets = pd.read_csv('../data/boutique+named.csv').loc[:1000, 'smiles'].values
+targets = pd.read_csv('../../molecule_sets/data/boutique+named.csv').loc[:1000, 'smiles'].values
 prioritizers=['bkms,reaxys','bkms', 'reaxys']
 save_prefix='../data/boutique_1000'
 

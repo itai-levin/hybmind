@@ -22,9 +22,9 @@ def get_args():
     options.add_argument("--start", dest="start", type=int)
     options.add_argument("--end", dest="end", type=int)
     options.add_argument("--task-id", dest="task_id",type=str)
-    options.add_argument("--reactions", dest="reactions",type=str)
-    options.add_argument("--templates", dest="templates",type=str)
-    options.add_argument("--prefix", dest="prefix",type=str,default=str(datetime.datetime.now()))
+    options.add_argument("--reactions", dest="reactions",type=str, default='../../data/template-analysis/enzymatic_reactions_to_check_uniqueness.json.gz')
+    options.add_argument("--templates", dest="templates",type=str, default='../../../bkms-data/template/bkms-and-reaxys-templates.json.gz')
+    options.add_argument("--prefix", dest="prefix",type=str,default='../../data/template-analysis/unique-enzymatic-chem/')
     args = options.parse_args()
     return args
 
