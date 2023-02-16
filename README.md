@@ -1,4 +1,4 @@
-This repository contains a collection of scripts and jupyter notebooks used to perform data processing and analysis for the manuscript "Merging enzymatic and synthetic chemistry with computational synthesis planning." This repository does not include code for to perform synthesis planning which can be found at 
+This repository contains a collection of scripts and jupyter notebooks used to perform data processing and analysis for the manuscript ["Merging enzymatic and synthetic chemistry with computational synthesis planning."](https://www.nature.com/articles/s41467-022-35422-y) This repository does not include the code to perform synthesis planning which can be found [here](https://github.com/itai-levin/chemoenzymatic-askcos).
 
 ## Installation
 There is no installation required. The scripts can be run independently after the repository is cloned and the necessary python packages are installed.  
