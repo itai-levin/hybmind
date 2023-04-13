@@ -12,8 +12,10 @@ import glob
 import re
 import matplotlib as mpl
 
-
 def show_reaction_ls (reaction_ls, metadata = None):
+    """
+    Display the reaction SMILES in `reaction_ls` along with associated `metadata`
+    """
     for i, reaction in enumerate(reaction_ls):
         try:
             if metadata:
@@ -26,122 +28,28 @@ def show_reaction_ls (reaction_ls, metadata = None):
         except:
             print (reaction)
 
-def get_all_children(tree, field = 'smiles', reactions=True):
-    reactions_list = []
-
-    if reactions==True :
-        query = 'is_reaction'
-    else:
-        query = 'is_chemical'
-
-    if query in tree.keys():
-        if tree[query]:
-            reactions_list.append(tree[field])
-            for child in tree['children']:
-                reactions_list = reactions_list + get_all_children(child, field, reactions)
-    else:
-        for child in tree['children']:
-            reactions_list = reactions_list + get_all_children(child, field, reactions)
-    return reactions_list
-
-def get_pathway_length (result):
-    return len(np.unique(get_all_children(result)))
-
-def flatten (list_of_lists):
-    return [x for ls in list_of_lists for x in ls]
-
-def get_pathway_by_prioritizer (results, prioritizer):
-    pathways = []
-    for result in results['output']:
-        prioritizers = []
-        path_prioritizers = flatten(get_all_children(result, field = 'template_set'))
-        if prioritizer in path_prioritizers:
-            pathways.append(result)
-
-    return pathways
-
-def get_best_path (path_list, metric = 'score'):
-    if len(path_list) == 0:
-        return None
-    if metric == 'score':
-        path_scores = [np.product(get_all_children(path, 'template_score')) for path in path_list]
-        best_idx = np.argmax(path_scores)
-    elif metric == 'shortest':
-        path_scores = [get_pathway_length(path) for path in path_list]
-        best_idx = np.argmin(path_scores)
-    else:
-        raise ('no such metric')
-
-    return path_list[best_idx]
-
-def summarize_path_numbers (paths, prioritizer = None):
-    num_trees = {}
-    for smiles in paths:
-        num_trees[smiles] = {}
-        for prioritizers in paths[smiles]:
-            if 'output' in paths[smiles][prioritizers].keys():
-                if not prioritizer:
-                    paths_ls = paths[smiles][prioritizers]['output']
-                else:
-                    paths_ls = get_pathway_by_prioritizer(paths[smiles][prioritizers], prioritizer)
-                num_trees[smiles][prioritizers] = len(paths_ls)
-            else:
-                print (smiles, prioritizers, paths[smiles][prioritizers])
-    return num_trees
-
-def get_shortest_path_length (path_ls, account_for_one_pot = False, bio_templates = 'bkms'):
-    best_path = get_best_path(path_ls, 'shortest')
-    if best_path != None:
-        shortest_path = get_all_children(best_path, 'template_set')
-        if not account_for_one_pot:
-            return len(shortest_path)
-        else:
-            path_sources = []
-            for template_source in shortest_path:
-                if bio_templates in template_source:
-                    path_sources.append('bio')
-                else:
-                    path_sources.append('chem')
-            #deduplicate consecutive appearances of "bio" templates
-            #to simulate one-put reaction as a single step
-            if len(path_sources) == 1:
-                return 1
-
-            deduplicated = [i for i, j in zip(path_sources, path_sources[1:]+[None])
-                                            if i != j or i == 'chem']
-
-            return len(deduplicated)
-    else:
-        print ("Could not find best path")
-        return None
-
-def summarize_shortest_paths (paths, prioritizer = None, account_for_one_pot = False):
-    shortest_path_lens = {}
-
-    for smiles in paths:
-        shortest_path_lens[smiles] = {}
-        for prioritizers in paths[smiles]:
-            if 'output' in paths[smiles][prioritizers].keys():
-                if not prioritizer:
-                    paths_ls = paths[smiles][prioritizers]['output']
-                else:
-                    paths_ls = get_pathway_by_prioritizer(paths[smiles][prioritizers], prioritizer)
-                if len(paths_ls) > 0:
-                    shortest_path_lens[smiles][prioritizers] = get_shortest_path_length(paths_ls, account_for_one_pot)
-            else:
-                print (smiles, prioritizers, paths[smiles][prioritizers])
-    return shortest_path_lens
-
-
 def load_results (results_path):
+    """
+    Read in results file from ASKCOS tree builder
+    """
+
     try:
         with open(results_path, 'r') as f:
-            return json.load(f)
+            loaded = json.load(f)
+            print ('File read as correct json')
+            return loaded
     except (json.JSONDecodeError, ValueError):
         with open(results_path, 'r') as f:
             results = {}
             print(results_path)
-            lines = [json.loads(entry) for entry in f.readlines()[0].replace('}{','}\t{').split('\t')]
+
+            # have used 2 methods for saving files -- with or without \n between entries
+            # want to be able to read both
+            read_lines = f.readlines()
+            if '\n' in read_lines[0]:
+                lines = [json.loads(entry) for entry in read_lines]
+            else:
+                lines = [json.loads(entry) for entry in read_lines[0].replace('}{','}\t{').split('\t')]
             for line in lines:
                 smiles = list(line.keys())[0]
                 prioritizer = list(line[smiles].keys())[0]
@@ -150,9 +58,170 @@ def load_results (results_path):
                 else:
                     results[smiles] = {}
                     results[smiles][prioritizer] = line[smiles][prioritizer]
+            print ('File read as concatenated jsons')
             return results
 
+def flatten (list_of_lists):
+    """
+    Returns a single list with all entries from a list of lists
+    """
+    return [x for ls in list_of_lists for x in ls]
 
+def traverse_pathway(pathway, field = 'smiles', reactions=True):
+    """
+    Returns all entries from a field in a pathway 
+    args:
+        output (dict): one pathway from an ASKCOS tree builder
+        field (list): name of field to find from all nodes in the pathway
+        reactions (bool): if true return entries from reactions else return entries from chemicals
+    returns:
+        list of entries from the pathway
+    """
+    reactions_list = []
+    
+    if reactions==True :
+        query = 'is_reaction'
+    else:
+        query = 'is_chemical'
+
+    if query in pathway.keys(): 
+        if pathway[query]:
+            reactions_list.append(pathway[field])
+            for child in pathway['children']:
+                reactions_list = reactions_list + traverse_pathway(child, field, reactions)
+    else:
+        if 'children' not in pathway.keys():
+            pass
+        for child in pathway['children']:
+            reactions_list = reactions_list + traverse_pathway(child, field, reactions)
+    return reactions_list
+
+def get_pathway_length (pathway, account_for_one_pot = False, bio_templates = 'bkms'):
+    """
+    Returns length of output pathway
+    args:
+        pathway (dict): one pathway from an ASKCOS tree builder
+        account_for_one_pot (bool): if true, count consecutive steps from bio_templates as one step
+        bio_templates (string): name of template set for which reactions can be run in one pot
+    return:
+        int length of pathway
+    """
+    if not account_for_one_pot:
+        return len(np.unique(traverse_pathway(pathway)))
+    else:
+        path_sources = []
+        for template_source in traverse_pathway(pathway, field='template_set'):
+            if bio_templates in template_source:
+                path_sources.append('bio')
+            else:
+                path_sources.append('chem')
+        #deduplicate consecutive appearances of "bio" templates
+        #to simulate one-pot reaction as a single step
+        if len(path_sources) == 1:
+            return 1
+        
+        deduplicated = [i for i, j in zip(path_sources, path_sources[1:]+[None]) 
+                                        if i != j or i == 'chem']
+        return len(deduplicated)
+
+def get_pathway_by_prioritizer (pathways, prioritizer):
+    """
+    Returns all pathways. If a prioritizer is indicated, filters to 
+    pathways that contain steps suggested by that prioritizer
+    args:
+        pathways (list): list of dictionary of results output from ASKCOS tree builder
+        prioritizer (string or None): name of prioritizer to filter by
+    returns:
+        list of pathways 
+    """
+
+    if prioritizer==None:
+        return pathways
+    else:
+        filt_pathways = []
+        for pathway in pathways:
+            prioritizers = []
+            path_prioritizers = flatten(traverse_pathway(pathway, field = 'template_set'))
+            if prioritizer in path_prioritizers:
+                filt_pathways.append(pathway)
+                        
+        return filt_pathways
+
+def get_best_path (path_list, metric = 'score', account_for_one_pot = False):
+    """
+    Returns best pathway as indicated by selected metric
+    """
+    if len(path_list) == 0:
+        return None, None
+    if metric == 'score':
+        path_scores = [np.product(traverse_pathway(path, 'template_score')) for path in path_list]
+        best_idx = np.argmax(path_scores)
+        best_score = np.max(path_scores)
+    elif metric == 'shortest':
+        path_scores = [get_pathway_length(path, account_for_one_pot=account_for_one_pot) for path in path_list]
+        best_idx = np.argmin(path_scores)
+        best_score = np.min(path_scores)
+    else:
+        raise ('no such metric "{}"'.format(metric))
+        
+    return path_list[best_idx], best_score
+
+def apply_fxn_to_all_results (results, fxn, prioritizer=None, **kwargs):
+    """
+    Wrapper function that applies a function to all pathways from the results
+    args:
+        results (dict): dictionary of results output from ASKCOS tree builder
+        fxn (function): function with signature function (pathway, **kwargs)
+            where pathway is a single output pathway from the ASKCOS tree builder
+        prioritizer (string or None): name of prioritizer to filter by
+    returns:
+        result dictionary with the function applied to the entries for each
+        template set/prioritizer for each target molecule
+    """
+    mapped_dict = {}
+    for smiles in results:
+        mapped_dict[smiles] = {}
+        for prioritizers in results[smiles]:
+            if 'output' in results[smiles][prioritizers].keys():
+                paths_ls = get_pathway_by_prioritizer(results[smiles][prioritizers]['output'], prioritizer)
+                # if len(paths_ls) > 0 and 'children' not in paths_ls[0].keys():
+                    # pdb.set_trace()
+                mapped_dict[smiles][prioritizers] = fxn(paths_ls, **kwargs)
+            else:
+                mapped_dict[smiles][prioritizers] = None
+                #print (smiles, prioritizers, paths[smiles][prioritizers])
+    return mapped_dict
+
+def summarize_path_numbers (results, prioritizer = None):
+    """
+    Returns a dictionary of the number of pathways found for each molecule
+    with each template prioritizer/set
+    """
+    num_trees = apply_fxn_to_all_results(results, len, prioritizer)
+    return num_trees
+
+def get_shortest_path_length (path_ls, account_for_one_pot = False):
+    best_path, shortest_length = get_best_path(path_ls, metric='shortest', account_for_one_pot=account_for_one_pot)
+    return shortest_length
+    
+def summarize_shortest_paths (paths, prioritizer = None, account_for_one_pot = False):
+    shortest_path_lens = apply_fxn_to_all_results(results, get_shortest_path_length, prioritizer, account_for_one_pot=account_for_one_pot)
+    return shortest_path_lens
+
+def get_all_shortest_paths (results, prioritizer = None, account_for_one_pot = False):
+    shortest_paths_summary = summarize_shortest_paths(results, prioritizer=prioritizer, account_for_one_pot=account_for_one_pot)
+    shortest_paths = {}
+    for smiles in results:
+        shortest_paths[smiles] = {}
+        for prioritizers in results[smiles]:
+            min_length = shortest_paths_summary[smiles][prioritizers]
+            if 'output' in results[smiles][prioritizers].keys():
+                paths_ls = get_pathway_by_prioritizer(results[smiles][prioritizers]['output'], prioritizer)
+                if isinstance(min_length, np.int64):
+                    shortest_paths[smiles][prioritizers] = {'output':[path for path in paths_ls if get_pathway_length(path, account_for_one_pot=account_for_one_pot)==min_length]}
+            else:
+                shortest_paths[smiles][prioritizers] = {'output':None}
+    return shortest_paths, shortest_paths_summary 
 
 def get_venn_regions(all_summary, bio_summary):
     bkms = set(bio_summary.loc['bkms',:][bio_summary.loc['bkms',:]>0].index)
@@ -300,8 +369,8 @@ def make_graph (target, reactions, sources, output, save_graph = True,
 
 def save_graph (outputs, smiles, prioritizers, output_prefix, buyables = 'all_buyables',
                 numerical = {'bkms':1, 'reaxys_enyzmatic':1, 'reaxys':2}):
-    reactions = [get_all_children(x, 'smiles') for x in outputs]
-    sources = [get_all_children(x, 'template_set') for x in outputs]
+    reactions = [traverse_pathway(x, 'smiles') for x in outputs]
+    sources = [traverse_pathway(x, 'template_set') for x in outputs]
     clean_smiles = smiles.replace('/','(fs)').replace('\\','(bs)')
     if len(reactions) != 0:
         g = make_graph(smiles, reactions, sources, output=output_prefix+'{}_{}_{}.png'.format(clean_smiles, buyables, prioritizers), numerical = numerical)
@@ -321,9 +390,9 @@ def show_shortest_path (result_ls):
     pathways = []
     for i, idx in enumerate(idxs):
         print ('Pathway number {}'.format(i))
-        reactions = [get_all_children(result) for result in result_ls][idx]
-        tforms = [get_all_children(result, 'tforms') for result in result_ls][idx]
-        sources = [get_all_children(result, 'template_set') for result in result_ls][idx]
+        reactions = [traverse_pathway(result) for result in result_ls][idx]
+        tforms = [traverse_pathway(result, 'tforms') for result in result_ls][idx]
+        sources = [traverse_pathway(result, 'template_set') for result in result_ls][idx]
 
         show_reaction_ls(reactions, metadata = list(zip(tforms, sources, reactions)))
 
@@ -342,9 +411,9 @@ def show_paths_by_length (result_ls, query_length):
     pathways = []
     for i, idx in enumerate(idxs):
         print ('Pathway number {}'.format(i))
-        reactions = [get_all_children(result) for result in result_ls][idx]
-        tforms = [get_all_children(result, 'tforms') for result in result_ls][idx]
-        sources = [get_all_children(result, 'template_set') for result in result_ls][idx]
+        reactions = [traverse_pathway(result) for result in result_ls][idx]
+        tforms = [traverse_pathway(result, 'tforms') for result in result_ls][idx]
+        sources = [traverse_pathway(result, 'template_set') for result in result_ls][idx]
 
         show_reaction_ls(reactions, metadata = list(zip(tforms, sources, reactions)))
 
