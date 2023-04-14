@@ -6,7 +6,6 @@ from queue import PriorityQueue
 from collections import Counter
 import matplotlib.pyplot as plt
 from matplotlib_venn import venn2, venn3, venn3_circles
-from graph_tool.all import *
 import networkx as nx
 import glob
 import re
@@ -288,95 +287,6 @@ def process_template_source (template_source_ls, numerical = {'bkms':1, 'reaxys_
             path_output.append(numerified)
         output.append(path_output)
     return(output)
-
-def make_graph (target, reactions, sources, output, save_graph = True,
-                numerical = {'bkms':1, 'reaxys_enzymatic':1, 'reaxys':2}, display=True, tform_dict=None):
-    num_sources = process_template_source(sources, numerical = numerical) #color edges based on [numerical]
-    edges = [graphify_reactions_ls(reaction_ls, sources_ls, numerical = numerical) for reaction_ls, sources_ls in zip(reactions, sources)]
-    molecules = np.unique([mol for path in edges for step in path for mol in step[:2]])
-    mols = [Chem.Draw.MolToImage(Chem.MolFromSmiles(smi), size=(600,600)).save('mol_images/'+smi.replace('/','(fs)').replace('\\','(bs)')+'.jpg') for smi in molecules if ('>>' not in smi) and (Chem.MolFromSmiles(smi))]
-    std_target = Chem.MolToSmiles(Chem.MolFromSmiles(target)) #standardize SMILES
-
-    edges_fl = flatten(edges)
-    g = Graph()
-    smiles = g.new_vp('string')
-    mol_img = g.new_vp('string')
-    source_e = g.new_ep('vector<float>', [''])
-    vertex_size = g.new_vp('int')
-    vertex_type = g.new_vp('string')
-    vertex_shape = g.new_vp('string')
-    vertex_fill_color = g.new_vp('string')
-    vertex_frame_color = g.new_vp('string')
-
-    if tform_dict:
-        tforms_v = g.new_vp('vector<string>')
-
-    cmap = plt.get_cmap('Set2')
-
-    for mol in molecules:
-        v = g.add_vertex()
-        smiles[v] = mol
-
-        if '>' in mol or not Chem.MolFromSmiles(mol):
-            mol_img[v] = 'mol_images/black.jpg'
-            vertex_size[v] = 20
-            vertex_type[v] = 'reaction'
-            vertex_shape[v] = 'circle'
-            vertex_fill_color[v] = 'black'
-            if tform_dict:
-                tforms_v[v] = tform_dict[mol]
-        else:
-            mol_img[v] = 'mol_images/' + smiles[v].replace('/','(fs)').replace('\\','(bs)') + '.jpg'
-            vertex_size[v]=90
-            vertex_type[v] = 'molecule'
-            vertex_shape[v] = 'square'
-            vertex_fill_color[v] = 'white'
-    added = []
-    for edge in edges_fl:
-        if (list(smiles).index(edge[0]), list(smiles).index(edge[1])) not in added:
-            e = g.add_edge(list(smiles).index(edge[0]), list(smiles).index(edge[1]))
-            source_e[e] = cmap(edge[2]-1)
-            added.append((list(smiles).index(edge[0]), list(smiles).index(edge[1])))
-
-    for v in g.get_vertices():
-        if g.vertex(v).in_degree() == 0:
-            vertex_frame_color[v] = 'green'
-        elif smiles[v] == std_target or smiles[v] == target:
-            vertex_frame_color[v] = 'red'
-        else:
-            vertex_frame_color[v] = 'black'
-
-    g.vertex_properties['smiles'] = smiles
-    g.vertex_properties['mol_img'] = mol_img
-    g.vertex_properties['vertex_size'] = vertex_size
-    g.vertex_properties['vertex_type'] = vertex_type
-    g.vertex_properties['vertex_shape'] = vertex_shape
-    g.vertex_properties['vertex_fill_color'] = vertex_fill_color
-    g.vertex_properties['vertex_frame_color'] = vertex_frame_color
-    g.edge_properties['source'] = source_e
-    if tform_dict:
-        g.vertex_properties['tform'] = tforms_v
-
-    pos_sfdp = graph_tool.draw.sfdp_layout(g, C=1.5, K=100, gamma=0.5, p =4)
-    g.vertex_properties['sfdp'] = pos_sfdp
-    if display:
-        graph_tool.draw.graph_draw(g, pos = pos_sfdp, vertex_surface=mol_img, output_size = (2000,2000),
-                                   vertex_size=vertex_size, vertex_color=vertex_frame_color,
-                                   vertex_fill_color=vertex_fill_color, vertex_shape = vertex_shape, edge_pen_width = 3,
-                                   edge_color = source_e, edge_length=10, vertex_pen_width=5,
-                                   nodesfirst=False, output=output)
-    return g
-
-def save_graph (outputs, smiles, prioritizers, output_prefix, buyables = 'all_buyables',
-                numerical = {'bkms':1, 'reaxys_enyzmatic':1, 'reaxys':2}):
-    reactions = [traverse_pathway(x, 'smiles') for x in outputs]
-    sources = [traverse_pathway(x, 'template_set') for x in outputs]
-    clean_smiles = smiles.replace('/','(fs)').replace('\\','(bs)')
-    if len(reactions) != 0:
-        g = make_graph(smiles, reactions, sources, output=output_prefix+'{}_{}_{}.png'.format(clean_smiles, buyables, prioritizers), numerical = numerical)
-    else:
-        return None
-    return g
 
 
 def show_shortest_path (result_ls):
