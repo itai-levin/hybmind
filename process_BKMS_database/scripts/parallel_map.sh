@@ -11,7 +11,7 @@ c) COLUMN=${OPTARG};; #Column number for unmapped smiles
 esac
 done
 
-LINENUM=$(wc -l $SMILESFILE| cut -f4 -d' ')
+LINENUM=$(cat $SMILESFILE | wc -l)
 BINSIZE=$(expr $LINENUM / $TASKNUM + 1)
 
 echo $LINENUM
